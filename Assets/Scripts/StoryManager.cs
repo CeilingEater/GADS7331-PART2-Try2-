@@ -34,9 +34,13 @@ public class StoryManager : MonoBehaviour {
 
         // Listen for the 'Enter' key on the input field
         playerInputField.onSubmit.AddListener((value) => OnInputSubmitted(value));
-        
+
         if (rollButton != null)
+        {
             rollButton.onClick.AddListener(OnRollClicked);
+            rollButton.gameObject.SetActive(false);
+        }
+            
 
         if (File.Exists(_savePath)) {
             LoadGame();
@@ -66,14 +70,15 @@ public class StoryManager : MonoBehaviour {
         string rollMessage = $"I roll a d20 and get a {roll}";
         
         AddTextToDisplay($"ROLL: {roll}", "#ffcf33");
+        
+        rollButton.gameObject.SetActive(false);
+        playerInputField.gameObject.SetActive(true);
+        
         await GetAiResponse(rollMessage);
         SaveGame();
     }
 
     async System.Threading.Tasks.Task GetAiResponse(string prompt) {
-        // We removed the sendButton.interactable lines to prevent the Null Error
-        if (rollButton != null) rollButton.interactable = false;
-
         _chatHistory.Add(new ChatMessage { role = "user", content = prompt });
         var request = new ChatRequest { model = modelName, messages = _chatHistory.ToArray() };
 
@@ -84,13 +89,18 @@ public class StoryManager : MonoBehaviour {
             try {
                 StoryNode node = JsonUtility.FromJson<StoryNode>(cleaned);
                 AddTextToDisplay($"<b>DM:</b> {node.narrative}", "#ffffff");
+
+                // Check if the AI wants a roll
+                if (node.requiresRoll) {
+                    playerInputField.gameObject.SetActive(false);
+                    rollButton.gameObject.SetActive(true);
+                }
+
                 _chatHistory.Add(new ChatMessage { role = "assistant", content = aiRawJson });
             } catch {
                 Debug.LogError("AI sent bad JSON: " + aiRawJson);
             }
         }
-
-        if (rollButton != null) rollButton.interactable = true;
     }
 
     void AddTextToDisplay(string text, string hexColor) {
@@ -112,6 +122,7 @@ public class StoryManager : MonoBehaviour {
     }
 
     public void LoadGame() {
+        if (!File.Exists(_savePath)) return;
         string json = File.ReadAllText(_savePath);
         _chatHistory = JsonUtility.FromJson<SaveData>(json).history;
 
@@ -126,10 +137,13 @@ public class StoryManager : MonoBehaviour {
     }
 
     private async void StartNewGame() {
-        _chatHistory.Add(new ChatMessage { 
-            role = "system", 
-            content = "You are a DM. Start with 3 scenarios. Output ONLY JSON: {\"narrative\": \"text\"}" 
-        });
+        // SYSTEM PROMPT: Forces variety and sets the rules for rolling
+        string systemInstructions = "You are a creative DM. Rules:\n" +
+                                    "1. Output ONLY JSON: {\"narrative\": \"...\", \"requiresRoll\": bool}\n" +
+                                    "2. For the first message, present 3 HIGHLY DISTINCT scenarios (e.g., Cyberpunk Heist, Underwater Horror, Floating Sky Temple). NO generic 'Whispering Woods' or 'Caravans'.\n" +
+                                    "3. Set 'requiresRoll' to true ONLY when the player attempts a skill-based action (climbing, lying, combat). Simple talking does not require a roll.";
+
+        _chatHistory.Add(new ChatMessage { role = "system", content = systemInstructions });
         await GetAiResponse("Start the game.");
     }
 

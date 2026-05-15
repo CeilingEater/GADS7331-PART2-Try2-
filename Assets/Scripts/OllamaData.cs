@@ -24,4 +24,5 @@ public class ChatResponse {
 public class StoryNode {
     public string narrative;
     public string[] choices;
+    public bool requiresRoll;
 }

@@ -33,13 +33,11 @@ public class StoryManager : MonoBehaviour {
         _savePath = Path.Combine(Application.persistentDataPath, fileName);
 
         // Listen for the 'Enter' key on the input field
-        playerInputField.onSubmit.AddListener((value) => OnInputSubmitted(value));
+        playerInputField.gameObject.SetActive(true); 
+        if (rollButton != null) rollButton.gameObject.SetActive(false);
 
-        if (rollButton != null)
-        {
-            rollButton.onClick.AddListener(OnRollClicked);
-            rollButton.gameObject.SetActive(false);
-        }
+        playerInputField.onSubmit.AddListener((value) => OnInputSubmitted(value));
+        if (rollButton != null) rollButton.onClick.AddListener(OnRollClicked);
             
 
         if (File.Exists(_savePath)) {
@@ -79,28 +77,40 @@ public class StoryManager : MonoBehaviour {
     }
 
     async System.Threading.Tasks.Task GetAiResponse(string prompt) {
+        // 1. Show the user that the AI is thinking (optional UI feedback)
+        if (rollButton != null) rollButton.interactable = false;
+
         _chatHistory.Add(new ChatMessage { role = "user", content = prompt });
         var request = new ChatRequest { model = modelName, messages = _chatHistory.ToArray() };
 
         string aiRawJson = await _client.GetAiReply(request);
-        
+    
         if (!string.IsNullOrEmpty(aiRawJson)) {
             string cleaned = CleanJson(aiRawJson);
             try {
                 StoryNode node = JsonUtility.FromJson<StoryNode>(cleaned);
                 AddTextToDisplay($"<b>DM:</b> {node.narrative}", "#ffffff");
 
-                // Check if the AI wants a roll
-                if (node.requiresRoll) {
-                    playerInputField.gameObject.SetActive(false);
-                    rollButton.gameObject.SetActive(true);
-                }
+                // --- FIX: Explicitly toggle both UI elements ---
+                // If a roll is required, show the button and hide the input.
+                // If no roll is required, show the input and hide the button.
+                bool needsRoll = node.requiresRoll;
+            
+                playerInputField.gameObject.SetActive(!needsRoll);
+                rollButton.gameObject.SetActive(needsRoll);
+
+                // Re-focus the input field if it's the one active
+                if (!needsRoll) playerInputField.ActivateInputField();
 
                 _chatHistory.Add(new ChatMessage { role = "assistant", content = aiRawJson });
             } catch {
                 Debug.LogError("AI sent bad JSON: " + aiRawJson);
+                // Default back to input if the AI breaks
+                playerInputField.gameObject.SetActive(true);
             }
         }
+
+        if (rollButton != null) rollButton.interactable = true;
     }
 
     void AddTextToDisplay(string text, string hexColor) {
@@ -137,11 +147,13 @@ public class StoryManager : MonoBehaviour {
     }
 
     private async void StartNewGame() {
-        // SYSTEM PROMPT: Forces variety and sets the rules for rolling
+        // We add a tiny bit more detail to the system prompt to ensure the first JSON 
+        // has requiresRoll set to false so the player can type their choice.
         string systemInstructions = "You are a creative DM. Rules:\n" +
-                                    "1. Output ONLY JSON: {\"narrative\": \"...\", \"requiresRoll\": bool}\n" +
-                                    "2. For the first message, present 3 HIGHLY DISTINCT scenarios (e.g., Cyberpunk Heist, Underwater Horror, Floating Sky Temple). NO generic 'Whispering Woods' or 'Caravans'.\n" +
-                                    "3. Set 'requiresRoll' to true ONLY when the player attempts a skill-based action (climbing, lying, combat). Simple talking does not require a roll.";
+                                    "1. Output ONLY JSON: {\"narrative\": \"...\", \"requiresRoll\": false}\n" +
+                                    "2. Present 3 HIGHLY DISTINCT scenarios for the player to choose from (e.g. Cyberpunk, Underwater, Sky Temple).\n" +
+                                    "3. Set 'requiresRoll' to true ONLY for skill-based actions, meaning things that are hard to do. Opt for making the player roll as much as possible for each response unless the player does something non-skilled base such as talking to someone. The intro should be 'requiresRoll': false." +
+                                    "4. After narration of the story, give the player only TWO options to choose from.";
 
         _chatHistory.Add(new ChatMessage { role = "system", content = systemInstructions });
         await GetAiResponse("Start the game.");

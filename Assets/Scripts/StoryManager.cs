@@ -3,9 +3,9 @@ using TMPro;
 using UnityEngine.UI;
 using System.Collections.Generic;
 using System.IO;
-using UnityEngine.SceneManagement; // Needed to go back to menu
+using UnityEngine.SceneManagement;
 
- public class SaveData {
+public class SaveData {
     public List<ChatMessage> history;
 }
 
@@ -13,8 +13,11 @@ public class StoryManager : MonoBehaviour {
     [Header("UI References")]
     public TMP_Text storyDisplayText;
     public TMP_InputField playerInputField;
-    public Button rollButton; 
     public ScrollRect scrollRect;
+
+    [Header("Dynamic Option UI")]
+    public GameObject optionButtonPrefab; 
+    public Transform optionButtonContainer; 
 
     [Header("Settings")]
     public string modelName = "gemma3:1b";
@@ -22,23 +25,28 @@ public class StoryManager : MonoBehaviour {
     private OllamaClient _client = new OllamaClient();
     private List<ChatMessage> _chatHistory = new List<ChatMessage>();
     private string _savePath;
+    private List<GameObject> _activeButtons = new List<GameObject>();
+
+    [System.Serializable]
+    public class GameOption {
+        public string text;
+        public bool requiresRoll;
+    }
+
+    [System.Serializable]
+    public class StoryNode {
+        public string narrative;
+        public GameOption[] options; 
+    }
 
     void Start() {
-        // Get the filename set by the Menu Scene
         string fileName = GameDataHandler.CurrentSaveFile;
-        
-        // If we opened this scene directly without the menu, give it a default name
         if (string.IsNullOrEmpty(fileName)) fileName = "QuickSave.json";
         
         _savePath = Path.Combine(Application.persistentDataPath, fileName);
 
-        // Listen for the 'Enter' key on the input field
         playerInputField.gameObject.SetActive(true); 
-        if (rollButton != null) rollButton.gameObject.SetActive(false);
-
         playerInputField.onSubmit.AddListener((value) => OnInputSubmitted(value));
-        if (rollButton != null) rollButton.onClick.AddListener(OnRollClicked);
-            
 
         if (File.Exists(_savePath)) {
             LoadGame();
@@ -49,11 +57,8 @@ public class StoryManager : MonoBehaviour {
 
     private void OnInputSubmitted(string input) {
         if (string.IsNullOrWhiteSpace(input)) return;
-        
-        // Clear input and keep it focused so the player can keep typing
         playerInputField.text = "";
         playerInputField.ActivateInputField(); 
-        
         ExecuteStep(input);
     }
 
@@ -63,54 +68,77 @@ public class StoryManager : MonoBehaviour {
         SaveGame();
     }
 
-    public async void OnRollClicked() {
-        int roll = UnityEngine.Random.Range(1, 21);
-        string rollMessage = $"I roll a d20 and get a {roll}";
-        
-        AddTextToDisplay($"ROLL: {roll}", "#ffcf33");
-        
-        rollButton.gameObject.SetActive(false);
-        playerInputField.gameObject.SetActive(true);
-        
-        await GetAiResponse(rollMessage);
-        SaveGame();
-    }
-
     async System.Threading.Tasks.Task GetAiResponse(string prompt) {
-        // 1. Show the user that the AI is thinking (optional UI feedback)
-        if (rollButton != null) rollButton.interactable = false;
-
         _chatHistory.Add(new ChatMessage { role = "user", content = prompt });
         var request = new ChatRequest { model = modelName, messages = _chatHistory.ToArray() };
 
         string aiRawJson = await _client.GetAiReply(request);
-    
+        ClearOptionButtons();
+
         if (!string.IsNullOrEmpty(aiRawJson)) {
             string cleaned = CleanJson(aiRawJson);
             try {
                 StoryNode node = JsonUtility.FromJson<StoryNode>(cleaned);
                 AddTextToDisplay($"<b>DM:</b> {node.narrative}", "#ffffff");
 
-                // --- FIX: Explicitly toggle both UI elements ---
-                // If a roll is required, show the button and hide the input.
-                // If no roll is required, show the input and hide the button.
-                bool needsRoll = node.requiresRoll;
-            
-                playerInputField.gameObject.SetActive(!needsRoll);
-                rollButton.gameObject.SetActive(needsRoll);
+                // Always keep input field open for custom typed user entries
+                playerInputField.gameObject.SetActive(true);
+                playerInputField.ActivateInputField();
 
-                // Re-focus the input field if it's the one active
-                if (!needsRoll) playerInputField.ActivateInputField();
+                if (node.options != null && node.options.Length > 0) {
+                    foreach (GameOption option in node.options) {
+                        CreateOptionButton(option);
+                    }
+                }
 
                 _chatHistory.Add(new ChatMessage { role = "assistant", content = aiRawJson });
             } catch {
                 Debug.LogError("AI sent bad JSON: " + aiRawJson);
-                // Default back to input if the AI breaks
-                playerInputField.gameObject.SetActive(true);
+                AddTextToDisplay("<b>DM:</b> [The narrative fractured... try entering a custom action below.]", "#ff4444");
             }
         }
+    }
 
-        if (rollButton != null) rollButton.interactable = true;
+    void CreateOptionButton(GameOption option) {
+        if (optionButtonPrefab == null || optionButtonContainer == null) return;
+
+        GameObject btnObj = Instantiate(optionButtonPrefab, optionButtonContainer);
+        _activeButtons.Add(btnObj);
+
+        TMP_Text btnText = btnObj.GetComponentInChildren<TMP_Text>();
+        Button btn = btnObj.GetComponent<Button>();
+
+        // Style and configure button behavior depending on risk profile
+        if (option.requiresRoll) {
+            if (btnText != null) btnText.text = $"{option.text} 🎲";
+            
+            // Visual Indicator: Turn the button background a soft crimson/amber risk tint
+            ColorBlock colors = btn.colors;
+            colors.normalColor = new Color(0.85f, 0.4f, 0.4f, 1f); // Soft red alert
+            colors.selectedColor = new Color(0.95f, 0.5f, 0.5f, 1f);
+            btn.colors = colors;
+
+            // When clicked, handle roll first, then transmit to DM
+            btn.onClick.AddListener(() => {
+                int roll = UnityEngine.Random.Range(1, 21);
+                AddTextToDisplay($"ROLL: {roll}", "#ffcf33");
+                ExecuteStep($"{option.text} (I roll a d20 and get a {roll})");
+            });
+        } else {
+            if (btnText != null) btnText.text = option.text;
+            btn.onClick.AddListener(() => OnOptionSelected(option.text));
+        }
+    }
+
+    void OnOptionSelected(string selectedOption) {
+        ExecuteStep(selectedOption);
+    }
+
+    void ClearOptionButtons() {
+        foreach (GameObject btn in _activeButtons) {
+            Destroy(btn);
+        }
+        _activeButtons.Clear();
     }
 
     void AddTextToDisplay(string text, string hexColor) {
@@ -119,13 +147,11 @@ public class StoryManager : MonoBehaviour {
         if (scrollRect != null) scrollRect.verticalNormalizedPosition = 0f;
     }
 
-    // Call this from a UI Button to go back home
     public void GoToMenu() {
         SaveGame();
-        SceneManager.LoadScene("Saves"); // Change this to your exact Menu scene name
+        SceneManager.LoadScene("Saves"); 
     }
 
-    // --- SAVE/LOAD LOGIC ---
     public void SaveGame() {
         string json = JsonUtility.ToJson(new SaveData { history = _chatHistory });
         File.WriteAllText(_savePath, json);
@@ -137,23 +163,61 @@ public class StoryManager : MonoBehaviour {
         _chatHistory = JsonUtility.FromJson<SaveData>(json).history;
 
         storyDisplayText.text = "--- Adventure Resumed ---";
+        ClearOptionButtons();
+
+        ChatMessage lastMessage = null;
+
         foreach (var msg in _chatHistory) {
             if (msg.role == "user") AddTextToDisplay("<b>You:</b> " + msg.content, "#5fbff9");
             if (msg.role == "assistant") {
-                StoryNode node = JsonUtility.FromJson<StoryNode>(CleanJson(msg.content));
-                AddTextToDisplay("<b>DM:</b> " + node.narrative, "#ffffff");
+                lastMessage = msg;
+                try {
+                    StoryNode node = JsonUtility.FromJson<StoryNode>(CleanJson(msg.content));
+                    string displayMessage = $"<b>DM:</b> {node.narrative}";
+                    
+                    if (node.options != null && node.options.Length > 0) {
+                        displayMessage += "\n\n<b>Choices presented:</b>";
+                        for (int i = 0; i < node.options.Length; i++) {
+                            string rollSuffix = node.options[i].requiresRoll ? " 🎲" : "";
+                            displayMessage += $"\n• {node.options[i].text}{rollSuffix}";
+                        }
+                    }
+                    AddTextToDisplay(displayMessage, "#ffffff");
+                } catch {
+                    AddTextToDisplay("<b>DM:</b> " + msg.content, "#ffffff");
+                }
+            }
+        }
+
+        if (lastMessage != null) {
+            try {
+                StoryNode activeNode = JsonUtility.FromJson<StoryNode>(CleanJson(lastMessage.content));
+                if (activeNode.options != null && activeNode.options.Length > 0) {
+                    foreach (GameOption option in activeNode.options) {
+                        CreateOptionButton(option);
+                    }
+                }
+            } catch {
+                Debug.LogError("Failed to restore choices on load.");
             }
         }
     }
 
     private async void StartNewGame() {
-        // We add a tiny bit more detail to the system prompt to ensure the first JSON 
-        // has requiresRoll set to false so the player can type their choice.
-        string systemInstructions = "You are a creative DM. Rules:\n" +
-                                    "1. Output ONLY JSON: {\"narrative\": \"...\", \"requiresRoll\": false}\n" +
-                                    "2. Present 3 HIGHLY DISTINCT scenarios for the player to choose from (e.g. Cyberpunk, Underwater, Sky Temple).\n" +
-                                    "3. Set 'requiresRoll' to true ONLY for skill-based actions, meaning things that are hard to do. Opt for making the player roll as much as possible for each response unless the player does something non-skilled base such as talking to someone. The intro should be 'requiresRoll': false." +
-                                    "4. After narration of the story, give the player only TWO options to choose from.";
+        string systemInstructions = 
+            "You are a text adventure Dungeon Master. Follow these structural rules perfectly:\n\n" +
+            "1. OUTPUT FORMAT: Respond ONLY with a valid JSON object. No explanations outside the JSON structure.\n\n" +
+            "2. EXACT JSON BLUEPRINT STRUCT:\n" +
+            "{\n" +
+            "  \"narrative\": \"Your descriptive scene narration here (Max 3 sentences).\",\n" +
+            "  \"options\": [\n" +
+            "    { \"text\": \"Safe option description\", \"requiresRoll\": false },\n" +
+            "    { \"text\": \"Risky or skilled action description\", \"requiresRoll\": true }\n" +
+            "  ]\n" +
+            "}\n\n" +
+            "3. EVALUATING ROLLS: When the user passes an option containing a roll statement like '(You roll a d20 and get a X)', interpret low numbers (1-9) as failures or complications, and high numbers (10-20) as success. Progress the story instantly based on that value.\n" +
+            "4. DYNAMIC ROLLS FLAG: Set 'requiresRoll' to true for individual options ONLY if they are inherently dangerous, complex, or require luck (e.g. pickpocketing, kicking down heavy iron doors, climbing walls). Conversations or simple looking around should be false.\n" +
+            "5. OPTIONS RULES: Provide 2 to 3 options max. Options text must be very short (under 4 words).";
 
         _chatHistory.Add(new ChatMessage { role = "system", content = systemInstructions });
         await GetAiResponse("Start the game.");

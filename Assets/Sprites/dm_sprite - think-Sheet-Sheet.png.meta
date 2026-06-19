@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: bc4de8bdc512b3b4fa7db50bfa5bb12f
+guid: 126734e8a9430424c8ff9e91c3c18324
 TextureImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -97,45 +97,45 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: dm_sprite-Sheet-Sheet_0
+      name: dm_sprite - think-Sheet-Sheet_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 300
-        height: 300
-      alignment: 8
-      pivot: {x: 1, y: 0}
+        width: 600
+        height: 600
+      alignment: 0
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: 0
       bones: []
-      spriteID: 4f24f5a2fe4125a4093f9d33de55efe1
-      internalID: 364122622
+      spriteID: 522bb819cfc2690439b64c389ead6364
+      internalID: -1356621557
       vertices: []
       indices: 
       edges: []
       weights: []
     - serializedVersion: 2
-      name: dm_sprite-Sheet-Sheet_1
+      name: dm_sprite - think-Sheet-Sheet_1
       rect:
         serializedVersion: 2
-        x: 300
+        x: 600
         y: 0
-        width: 300
-        height: 300
-      alignment: 8
-      pivot: {x: 1, y: 0}
+        width: 600
+        height: 600
+      alignment: 0
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: 0
       bones: []
-      spriteID: b79cac564c3f1d2468b972047f7e8dce
-      internalID: 398843538
+      spriteID: ac19808cf04f7d149bdaab0fdc29a096
+      internalID: -661488547
       vertices: []
       indices: 
       edges: []
@@ -144,7 +144,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 1476d12c7dec81a4ab3f498f9f53a2c9
+    spriteID: 8cf911e68374e5549974bec65baf5e2f
     internalID: 0
     vertices: []
     indices: 
@@ -154,8 +154,8 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      dm_sprite-Sheet-Sheet_0: 364122622
-      dm_sprite-Sheet-Sheet_1: 398843538
+      dm_sprite - think-Sheet-Sheet_0: -1356621557
+      dm_sprite - think-Sheet-Sheet_1: -661488547
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

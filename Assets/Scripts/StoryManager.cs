@@ -14,6 +14,7 @@ public class StoryManager : MonoBehaviour {
     public TMP_Text storyDisplayText;
     public TMP_InputField playerInputField;
     public ScrollRect scrollRect;
+    public SpriteAnimator dmMascotAnimator;
 
     [Header("Dynamic Option UI")]
     public GameObject optionButtonPrefab; 
@@ -69,6 +70,9 @@ public class StoryManager : MonoBehaviour {
     }
 
     async System.Threading.Tasks.Task GetAiResponse(string prompt) {
+       
+        if (dmMascotAnimator != null) dmMascotAnimator.StartThinkingAnimation();
+
         _chatHistory.Add(new ChatMessage { role = "user", content = prompt });
         var request = new ChatRequest { model = modelName, messages = _chatHistory.ToArray() };
 
@@ -81,7 +85,6 @@ public class StoryManager : MonoBehaviour {
                 StoryNode node = JsonUtility.FromJson<StoryNode>(cleaned);
                 AddTextToDisplay($"<b>DM:</b> {node.narrative}", "#ffffff");
 
-                // Always keep input field open for custom typed user entries
                 playerInputField.gameObject.SetActive(true);
                 playerInputField.ActivateInputField();
 
@@ -97,6 +100,9 @@ public class StoryManager : MonoBehaviour {
                 AddTextToDisplay("<b>DM:</b> [The narrative fractured... try entering a custom action below.]", "#ff4444");
             }
         }
+
+      
+        if (dmMascotAnimator != null) dmMascotAnimator.StopThinkingAnimation();
     }
 
     void CreateOptionButton(GameOption option) {
@@ -108,17 +114,17 @@ public class StoryManager : MonoBehaviour {
         TMP_Text btnText = btnObj.GetComponentInChildren<TMP_Text>();
         Button btn = btnObj.GetComponent<Button>();
 
-        // Style and configure button behavior depending on risk profile
+       
         if (option.requiresRoll) {
             if (btnText != null) btnText.text = $"{option.text} 🎲";
             
-            // Visual Indicator: Turn the button background a soft crimson/amber risk tint
+   
             ColorBlock colors = btn.colors;
-            colors.normalColor = new Color(0.85f, 0.4f, 0.4f, 1f); // Soft red alert
+            colors.normalColor = new Color(0.85f, 0.4f, 0.4f, 1f); 
             colors.selectedColor = new Color(0.95f, 0.5f, 0.5f, 1f);
             btn.colors = colors;
 
-            // When clicked, handle roll first, then transmit to DM
+       
             btn.onClick.AddListener(() => {
                 int roll = UnityEngine.Random.Range(1, 21);
                 AddTextToDisplay($"ROLL: {roll}", "#ffcf33");
@@ -215,9 +221,11 @@ public class StoryManager : MonoBehaviour {
             "    { \"text\": \"Risky or skilled action description\", \"requiresRoll\": true }\n" +
             "  ]\n" +
             "}\n\n" +
-            "3. EVALUATING ROLLS: When the user passes an option containing a roll statement like '(You roll a d20 and get a X)', interpret low numbers (1-9) as failures or complications, and high numbers (10-20) as success. Progress the story instantly based on that value.\n" +
+            "3. EVALUATING ROLLS: When the user passes an option containing a roll statement like '(You roll a d20 and get a X)', interpret low numbers (1-9) as failures or complications (For example, the player could try to open a heavy door and the handle breaks off.), and high numbers (10-20) as success (For example, the player tries to slay a dragon and they cut it's head clean off). Progress the story instantly based on that value.\n" +
             "4. DYNAMIC ROLLS FLAG: Set 'requiresRoll' to true for individual options ONLY if they are inherently dangerous, complex, or require luck (e.g. pickpocketing, kicking down heavy iron doors, climbing walls). Conversations or simple looking around should be false.\n" +
-            "5. OPTIONS RULES: Provide 2 to 3 options max. Options text must be very short (under 4 words).";
+            "5. OPTIONS RULES: Provide 2 to 3 options max. Options text must be very short (under 4 words).\n" +
+            "6. STORY PROGRESSION: Make sure you do not loop back to the same options for the player to choose from, and keep the story moving forwards.\n" +
+            "7. STORY CONTENT: Choose a fantastical setting for the story to be set in. (E.g, A magical medieval kingdom, a fairy alcove, a dark dungeon, etc.). The player can run into magical items, monsters, interesting NPC's, etc.";
 
         _chatHistory.Add(new ChatMessage { role = "system", content = systemInstructions });
         await GetAiResponse("Start the game.");
